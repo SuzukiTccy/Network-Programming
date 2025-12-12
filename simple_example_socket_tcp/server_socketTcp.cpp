@@ -6,7 +6,7 @@
 #include <unistd.h> // POSIX系统服务 close(), read(), write() sleep(), getpid()
 
 
-const int PROT = 8080; // 端口号
+const int PORT = 8080; // 端口号
 const int BUFFER_SIZE = 1024; // 缓冲区大小
 
 int main(){
@@ -21,6 +21,7 @@ int main(){
         perror("Socket creation failed!"); // 自动包含errno描述
         return -1;
     }
+    std::cout << "Create Socket success!" << std::endl;
 
     // 2. 设置地址重用，避免端口占用问题
     int opt = 1;
@@ -35,12 +36,13 @@ int main(){
         close(server_fd);
         return -1;
     }
+    std::cout << "Setsockopt success!" << std::endl;
 
     // 3. 绑定地址和端口
     sockaddr_in address; // IPv4地址容器
     address.sin_family = AF_INET; // 指定地址族为IPv4
     address.sin_addr.s_addr = INADDR_ANY; // 监听所有的网络接口
-    address.sin_port = htons(PROT); // 转化为网络字节序
+    address.sin_port = htons(PORT); // 转化为网络字节序
 
     if(bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0){
         // std::cerr << "Bind failed: " << strerror(errno) << std::endl;
@@ -48,6 +50,7 @@ int main(){
         close(server_fd);
         return -1;
     }
+    std::cout << "Bind the PORT :  " << PORT << std::endl; 
 
     // 4. 监听连接请求 (已完成连接队列的最大长度为3)
     if(listen(server_fd, 3) < 0){
@@ -56,7 +59,7 @@ int main(){
         close(server_fd);
         return -1;
     }
-    std::cout << "Server listening on port " << PROT << std::endl;
+    std::cout << "Server listening on port " << PORT << std::endl;
 
     // 5. 接受客户端连接
     int new_socket; // 新的嵌套字
@@ -67,13 +70,14 @@ int main(){
             server_fd,                      // 监听嵌套字
             (struct sockaddr*)&client_addr, // 客户端地址信息
             (socklen_t*)&client_addr_len    // 客户端地址长度
-        ) < 0)){
+        )) < 0){
         if(errno == EINTR) continue;  // 被信号中断，重试
         // std::cerr << "Accept failed: " << strerror(errno) << std::endl;
         perror("Accept failed!");
         close(server_fd);
         return -1;
     }
+    std::cout << "Accept success!" << std::endl;
 
     char client_ip[INET_ADDRSTRLEN];
     // 将网络字节序的二进制IP地址转换为点分十进制字符串
@@ -90,14 +94,25 @@ int main(){
     
     // 6. 数据交互
     char buffer[BUFFER_SIZE] = {0};
-    ssize_t valrecv = recv(new_socket, buffer, BUFFER_SIZE, 0);
+    ssize_t valrecv;
+    if((valrecv = recv(new_socket, buffer, BUFFER_SIZE, 0)) < 0){
+        perror("Data Received Fail!");
+        close(new_socket);
+        close(server_fd);
+        return -1;
+    }
     if (valrecv > 0){
         buffer[valrecv] = '\0'; // 手动添加字符终止符
         std::cout << "Received: " << buffer << std::endl;
     }
 
     const char *response = "Hello from TCP server";
-    send(new_socket, response, strlen(response), 0);
+    if(send(new_socket, response, strlen(response), 0) < 0){
+        perror("Response send Fail!");
+        close(new_socket);
+        close(server_fd);
+        return -1;
+    }
     std::cout << "Response send" << std::endl;
 
     // 7. 关闭连接
