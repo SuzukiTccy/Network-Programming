@@ -16,6 +16,7 @@ int main(){
     if(sock == -1){
         perror("Socket creation failed!");
     }
+    std::cout << "Pid : " << getpid() << std::endl;
 
     // 2. 设置服务器地址
     sockaddr_in serv_addr;

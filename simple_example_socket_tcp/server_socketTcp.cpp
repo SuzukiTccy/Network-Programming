@@ -22,6 +22,7 @@ int main(){
         return -1;
     }
     std::cout << "Create Socket success!" << std::endl;
+    std::cout << "Pid : " << getpid() << std::endl;
 
     // 2. 设置地址重用，避免端口占用问题
     int opt = 1;
@@ -65,7 +66,7 @@ int main(){
     int new_socket; // 新的嵌套字
     sockaddr_in client_addr; // 客户端IPv4容器
     int client_addr_len = sizeof(client_addr);
-    while((new_socket = 
+    while((new_socket =                     // 赋值表达式的值就是赋值后左操作数的值
         accept(                             // 从已完成队列中取出一个已建立的连接
             server_fd,                      // 监听嵌套字
             (struct sockaddr*)&client_addr, // 客户端地址信息
