@@ -60,8 +60,5 @@ int main(){
         close(sock);
         sock = -1;
     }
-
-
-
     return 0;
 }
