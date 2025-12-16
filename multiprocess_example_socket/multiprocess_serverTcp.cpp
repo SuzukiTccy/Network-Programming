@@ -133,7 +133,8 @@ int main(){
     // 5. 设置信号处理，避免僵尸进程
     struct sigaction sa;
     sa.__sigaction_u.__sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
+    sigemptyset(&sa.sa_mask); // 清空sa_mask
+    sigaddset(&sa.sa_mask, SIGINT);  // 额外阻塞 SIGINT, 为了能在Ctrl+C时，也可以正常处理回收子进程
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
 
     if(sigaction(SIGCHLD, &sa, NULL) == -1){
