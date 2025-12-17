@@ -61,14 +61,7 @@ public:
     }
 
     ~ThreadPool(){
-        stop_flag.store(true);
-        task_available.notify_all();
-        for(auto &t : threadpool){
-            if(t.joinable()){
-                t.join();
-            }
-        }
-        _logger.info("线程池销毁完成");
+        stop();
     }
 
     template <class F, class ...Args>
@@ -93,6 +86,7 @@ public:
                 t.join();
             }
         }
+         _logger.info("线程池销毁完成");
     }
 
 };
@@ -126,44 +120,70 @@ public:
 
     void handle(int client_fd, sockaddr_in client_addr){
         char client_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &client_addr, client_ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
         _logger.info("线程PID: ", getpid(), 
                     " 连接客户端: ", client_ip, ":", ntohs(client_addr.sin_port));
 
         // 数据交互
         char buffer[BUFFER_SIZE];
-        ssize_t bytes_read = recv(client_fd, buffer, BUFFER_SIZE, 0);
-        if(bytes_read > 0){
-            buffer[bytes_read] = '\0';
-            _logger.info("Receive: ", buffer);
-        }
-        else if(bytes_read < 0){
-            if(errno == EINTR) {}
-            std::cerr << "[ERROR] ";
-            perror("Receive Failed");
-        }
-        else if(bytes_read == 0){
-            std::cerr << "[ERROR] ";
-            perror("客户端连接已关闭");
-        }
+        fd_set readfds;
+        while(true){
+            FD_ZERO(&readfds);
+            FD_SET(client_fd, &readfds);
 
-        std::string response = "HTTP/1.1 200 OK\r\n"
-                               "Content-Type: text/plain\r\n"
-                               "Content-Length: 21\r\n"
-                               "\r\n"
-                               "Hello from thread pool";
-        ssize_t send_len = send(client_fd, response.c_str(), response.size(), 0);
-        if(send_len > 0){
-            _logger.info("Send response");
-        }
-        else if(send_len == 0){
-            std::cerr << "[ERROR] ";
-            perror("客户端连接已关闭");
-        }
-        else if(send_len < 0){
-            if(errno == EINTR) {}
-            std::cerr << "[ERROR] ";
-            perror("Receive Failed");
+            struct timeval tv = {1, 0};
+            int activity = select(client_fd + 1, &readfds, NULL, NULL, &tv);
+            if(activity < 0){
+                std::cerr << "[ERROR] ";
+                perror("Select Failed");
+            }
+            else if(activity == 0){
+                continue;
+            }
+
+            if(!FD_ISSET(client_fd, &readfds)){
+                _logger.error("FD_ISSET Failed!");
+                continue;
+            }
+
+            // 接收数据
+            ssize_t bytes_read = recv(client_fd, buffer, BUFFER_SIZE, 0);
+            if(bytes_read > 0){
+                buffer[bytes_read] = '\0';
+                std::cout << "\nFrom client " << client_ip << ":" << ntohs(client_addr.sin_port) 
+                            << "\nReceived:" << buffer << std::endl;
+            }
+            else if(bytes_read < 0){
+                if(errno == EINTR) {}
+                std::cerr << "[ERROR] ";
+                perror("Receive Failed");
+            }
+            else if(bytes_read == 0){
+                std::cerr << "[ERROR] ";
+                perror("客户端连接已关闭");
+                break;
+            }
+
+            // 发送响应
+            std::string response = "\nHTTP/1.1 200 OK\r\n"
+                                "Content-Type: text/plain\r\n"
+                                "Content-Length: 21\r\n"
+                                "\r\n"
+                                "Hello from thread pool\n";
+            ssize_t send_len = send(client_fd, response.c_str(), response.size(), 0);
+            if(send_len > 0){
+                _logger.info("Send response");
+            }
+            else if(send_len == 0){
+                std::cerr << "[ERROR] ";
+                perror("客户端连接已关闭");
+                break;
+            }
+            else if(send_len < 0){
+                if(errno == EINTR) {}
+                std::cerr << "[ERROR] ";
+                perror("Send Failed");
+            }
         }
 
         close(client_fd);
@@ -171,6 +191,7 @@ public:
             " 关闭客户端连接: ", client_ip, ":", ntohs(client_addr.sin_port));
     }
 };
+
 
 // 主服务器类
 class ThreadServer{
@@ -230,7 +251,7 @@ public:
 
         fd_set readfds;
         // 主接收循环
-        while(_running){
+        while(_running.load()){
             FD_ZERO(&readfds);
             FD_SET(server_fd, &readfds);
             struct timeval tv = {1, 0}; // 1秒超时
@@ -265,7 +286,7 @@ public:
                 _handler.handle(client_fd, client_addr);
             });
         }
-        _logger.info("服务器接收关闭");
+        _logger.info("服务器接收连接关闭");
     }
 
     void stop(){
@@ -294,7 +315,8 @@ std::atomic<bool> ThreadServer::_running{false};
 void setup_signal_handler(){
     struct sigaction sa;
     sa.__sigaction_u.__sa_handler = [](int){
-        std::cout << "\n正在关闭服务器..." << std::endl;
+        std::cout << "\n[INFO] ";
+        std::cout << "正在关闭服务器..." << std::endl;
         ThreadServer::_running.store(false);
     };
 
@@ -319,7 +341,7 @@ int main(){
             server.start(10); // 10个工作线程
         });
 
-        std::cout << "Server running. Press Ctrl+C to stop." << std::endl;
+        std::cout << "[INFO] Server running. Press Ctrl+C to stop." << std::endl;
 
         // 主线程等待服务器线程结束
         server_thread.join();

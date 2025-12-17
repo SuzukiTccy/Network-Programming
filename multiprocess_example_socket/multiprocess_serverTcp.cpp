@@ -33,7 +33,7 @@ void sigchld_handler(int sig){
 void handle_client(int client_fd, sockaddr_in client_addr){
     // 1. 获取客户端IP
     char client_ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, (struct sockaddr*)&client_addr, client_ip, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
 
     std::cout << "Child process PID: " << getpid() << " handle client "
             << client_ip << ":" << ntohs(client_addr.sin_port) << std::endl;

@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstring>
+#include <csignal> // 信号处理
 #include <sys/socket.h> // 核心Socket API
 #include <netinet/in.h> // Internet地址结构: struct sockaddr_in
 #include <arpa/inet.h> // IP地址转换: inet_pton
@@ -47,6 +48,8 @@ int main(){
 
     // 注册退出信号
     signal(SIGINT, sigint_handle);
+    // 忽略管道破裂信号，针对服务端主动关闭连接的情况，防止程序崩溃
+    signal(SIGPIPE, SIG_IGN);
 
     char buffer[BUFFER_SIZE] = {0};
     std::string message;
@@ -64,7 +67,7 @@ int main(){
         }
         if(message.empty()) continue;// 检查消息是否为空
 
-        ssize_t send_len = send(sock, message.c_str(), message.size(), MSG_NOSIGNAL);
+        ssize_t send_len = send(sock, message.c_str(), message.size(), 0);
         if(send_len > 0){
             std::cout << "Message send" << std::endl;
         }
