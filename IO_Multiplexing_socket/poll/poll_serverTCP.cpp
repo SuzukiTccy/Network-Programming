@@ -8,6 +8,8 @@
 #include <vector>            // C++标准模板库向量容器，用于动态数组管理
 #include <csignal>           // 信号处理头文件，用于捕获和处理信号，如SIGINT、SIGQUIT等
 #include <atomic>            // 原子操作头文件，用于实现线程安全的计数器
+#include <fcntl.h>           // 文件控制操作，用于设置文件描述符属性
+
 
 const int PORT = 8080;  // 服务器监听端口
 const int BUFFER_SIZE = 1024;  // 缓冲区大小
@@ -16,6 +18,7 @@ const int MAX_CLIENTS = 10;  // 最大客户端连接数
 std::atomic<bool> _running{false};
 void signalHandler() {
     struct sigaction sa;
+    sa.sa_flags = SA_RESTART; // 设置信号处理标志，使被中断的系统调用自动重启
     sa.sa_handler = [](int signal) {
         if (signal == SIGINT || signal == SIGTERM) {
             std::cout << "[INFO] " << "收到退出信号: " << signal
@@ -90,6 +93,7 @@ int main() {
         // 6. 等待事件
         int activaty = poll(fds.data(), fds.size(), 1000);
         if(activaty < 0) {
+            if(errno == EINTR) continue; // 如果是被信号中断，则继续等待事件
             std::cerr << "[ERROR] ";
             perror("Poll Failed");
             continue;
@@ -112,6 +116,10 @@ int main() {
                         perror("Accept Failed");
                         continue;
                     }
+
+                    // 设置非阻塞模式
+                    int flags = fcntl(client_fd, F_GETFL, 0);       // 获取当前文件描述符的标志
+                    fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);  // 设置为非阻塞模式
 
                     // 添加新客户端到poll结构
                     pollfd client_pollfd;
